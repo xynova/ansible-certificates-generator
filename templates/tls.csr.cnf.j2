@@ -1,0 +1,18 @@
+[req]
+req_extensions = v3_req
+distinguished_name = req_distinguished_name
+
+[req_distinguished_name]
+
+[ v3_req ]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+subjectAltName = @alt_names
+
+[alt_names]
+{% for dns in item.dns_list %}
+DNS.{{ loop.index }} = {{ dns }}
+{% endfor %}
+{% for ip in item.ip_list %}
+IP.{{ loop.index }} = {{ ip }}
+{% endfor %}

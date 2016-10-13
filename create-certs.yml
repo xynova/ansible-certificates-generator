@@ -1,0 +1,58 @@
+---
+
+- hosts: localhost
+  become: false
+  gather_facts: false
+  vars:
+    ca_cn: jenkins-ca
+    cluster_certs:
+      - { cn: jenkins-master, cnf: jenkins-master, dns_list: [jenkins-master.local, jenkins.xynova.com], ip_list: [192.168.99.101] }
+    vault_password_file: vault-pwd.ignore.txt
+    certs_dir: files/certs
+    ca_key: "{{ ca_cn }}-key.pem"
+    ca_cert: "{{ ca_cn }}.pem"
+  tasks:
+
+  - name: Ensure certs dir
+    file: path={{ certs_dir }} recurse=true state=directory
+
+  - name: Generate CA
+    shell: |
+      openssl genrsa -out {{ certs_dir }}/{{ ca_key }} 2048
+      openssl req -x509 -new -nodes -key {{ certs_dir }}/{{ ca_key }} -days 10000 -out {{ certs_dir }}/{{ ca_cert }} -subj "/CN={{ ca_cn }}"  2>/dev/null
+    args:
+      creates: "{{ certs_dir }}/{{ ca_cert }}"
+
+  - name: Create TLS cert request openssl configuration files (.cnf)
+    template: src=tls.csr.cnf.j2 dest={{ certs_dir }}/{{ item.cn }}.csr.cnf
+    with_items: 
+      - "{{ cluster_certs }}"
+    register: command_result 
+  
+  - name: Allow certs to be recreated when request configuration files change 
+    file: path={{ certs_dir }}/{{ item.item }}*.pem state=absent
+    with_items: "{{ command_result.results }}"
+    when: "{{ item | changed }}"
+    changed_when: "{{ item | changed }}"
+
+  - name: Create and sign TLS certs
+    shell: |
+      openssl genrsa -out {{ item.cn }}-key.pem 2048
+      openssl req -new -key {{ item.cn }}-key.pem -out {{ item.cn }}.csr -subj "/CN={{ item.cn }}" -config {{ item.cn }}.csr.cnf
+      openssl x509 -req -in {{ item.cn }}.csr -CA {{ ca_cert }} -CAkey {{ ca_key }} -CAcreateserial -out {{ item.cn }}.pem -days 365 -extensions v3_req -extfile {{ item.cn }}.csr.cnf 
+    with_items: 
+      - "{{ cluster_certs }}"
+    args:
+      chdir: "{{ certs_dir }}"
+      creates: "{{ item.cn }}.pem"
+    register: command_result
+    changed_when: command_result.stdout.find('skipped') == -1
+
+  - name: Encrypt cert keys
+    shell: |
+      ansible-vault encrypt --vault-password-file={{ vault_password_file }} {{ certs_dir }}/{{ item.cn }}-key.pem
+    with_items: 
+      - { cn: "{{ ca_cn }}" }
+      - "{{ cluster_certs }}"
+    ignore_errors: true    
+
