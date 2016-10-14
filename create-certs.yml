@@ -19,7 +19,7 @@
   - name: Generate CA
     shell: |
       openssl genrsa -out {{ certs_dir }}/{{ ca_key }} 2048
-      openssl req -x509 -new -nodes -key {{ certs_dir }}/{{ ca_key }} -days 10000 -out {{ certs_dir }}/{{ ca_cert }} -subj "/CN={{ ca_cn }}"  2>/dev/null
+      openssl req -x509 -new -nodes -sha256 -key {{ certs_dir }}/{{ ca_key }} -days 365 -out {{ certs_dir }}/{{ ca_cert }} -subj "/CN={{ ca_cn }}"  2>/dev/null
     args:
       creates: "{{ certs_dir }}/{{ ca_cert }}"
 
@@ -38,8 +38,8 @@
   - name: Create and sign TLS certs
     shell: |
       openssl genrsa -out {{ item.cn }}-key.pem 2048
-      openssl req -new -key {{ item.cn }}-key.pem -out {{ item.cn }}.csr -subj "/CN={{ item.cn }}" -config {{ item.cn }}.csr.cnf
-      openssl x509 -req -in {{ item.cn }}.csr -CA {{ ca_cert }} -CAkey {{ ca_key }} -CAcreateserial -out {{ item.cn }}.pem -days 365 -extensions v3_req -extfile {{ item.cn }}.csr.cnf 
+      openssl req -new -sha256 -key {{ item.cn }}-key.pem -out {{ item.cn }}.csr -subj "/CN={{ item.cn }}" -config {{ item.cn }}.csr.cnf
+      openssl x509 -req -sha256 -in {{ item.cn }}.csr -CA {{ ca_cert }} -CAkey {{ ca_key }} -CAcreateserial -out {{ item.cn }}.pem -days 365 -extensions v3_req -extfile {{ item.cn }}.csr.cnf 
     with_items: 
       - "{{ cluster_certs }}"
     args:
